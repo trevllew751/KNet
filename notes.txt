@@ -1,0 +1,102 @@
+#########################################
+######## Using pytorch.nn.GRU ###########
+#########################################
+rnn = torch.nn.GRU(
+    input_size,     # number of expected features in the input x -> set to the number of features from the log
+    hidden_size,    # number of features in the hidden state h -> set to some integer value derived from m^2 and n^2
+    num_layers,     # number of recurrent layers -> set to ????
+    bias,           # determines if the layer uses bias weights, defaults to True
+    batch_first,    # if True, input/output is (batch,seq,feature), else it's (seq,batch,feature), default False
+    dropout,        # if non-zero, introduce a dropout layer with probability <dropout>, else 0
+    bidirectional   # if True, becomes bidirectional GRU, default False
+)
+
+Inputs to the RNN
+
+input: tensor in the shape of (L, H_in) for unbatched input, (L, N, H_in) for batch_first=False or (N, L, H_in) when batch_first=True
+    containing the features of the input sequence. The input can also be a packed variable length sequence
+h_0: tensor of shape (D * num_layers, H_out) or (D * num_layers, N, H_out) containing the initial hidden state for the input sequence
+    defaults to zeros if not provided
+
+    where:
+        N = batch size
+        L = sequence length
+        D = 2 if bidirectional=True, 1 otherwise
+        H_in = input_size
+        H_out = hidden_size
+
+Outputs from the RNN
+
+output: tensor of shape (L, D * H_out) for unbatched input, (L, N, D * H_out) when batch_first=False or (N, L, D * H_out)
+    when batch_first=True containing the output features (h_t) from the last layer of the GRU for each t
+h_n: tensor of shape (D * num_layers, H_out) or (D * num_layers, N, H_out) containing the final hidden state for the
+    input sequence
+
+
+example:
+
+rnn = torch.nn.GRU(
+    input_size=input_size,
+    hidden_size=hidden_size,
+    num_layers=num_layers,
+    bias=bias,
+    batch_first=batch_first,
+    dropout=dropout,
+    bidirectional=bidirectional
+)
+
+input = torch.randn(sequence_length, batch_size, input_size)
+h0 = torch.randn(D * num_layers, hidden_size)
+
+output = rnn(input, h0)
+
+##############################
+###### KalmanNet Notes #######
+##############################
+
+Σ = prediction based on previous state
+H = observation matrix
+F = evolution matrix (transformation function)
+R = observation covariance matrix, may be able to pull from sins_node_690.config, otherwise 0s
+Q = state covariance matrix, from sins_node_690.config
+    P0:   [ 3.0000e-04, 3.0000e-04, 3.0000e-03,  # Att     (rad)^2
+            1.6000e-05, 1.6000e-05, 1.6000e-05,  # NED Vel (m/s)^2
+            1.5398e-13, 1.5398e-13, 1.0000e+00,  # Pos     (rad,rad,m)^2
+            5.8761e-16, 5.8761e-16, 5.8761e-16,  # b_g     (rad/s)^2
+            2.1638e-08, 2.1638e-08, 2.1638e-08 ] # b_a     (m/s^2)^2
+
+St|t−1 = H · Σt|t−1 · H^T + R
+
+Σt|t−1 = F · Σt−1|t−1 · F^T + Q
+
+Kt = Σt|t−1 · H^T · S−1t|t−1 -> need this
+
+Initialize state RNN with the following parameters:
+    input_size = however many features we want, from inertial_nav_node and data_collector
+    hidden_size = some integer product of the dimensions of input (mxn)
+    num_layers = 3, arbitrary?
+    bias = default
+    batch_first = None
+    dropout = 0
+    bidirectional=False
+
+Initialize state covariance (Q) RNN with the following parameters
+    input_size = however many features we want, from inertial_nav_node and data_collector
+    hidden_size = some integer product of the dimensions of input (mxn)
+    num_layers = 3, arbitrary?
+    bias = default
+    batch_first = None
+    dropout = 0
+    bidirectional=False
+
+Initialize following variables:
+    y_prev = zeros[input_size, 1])
+    y = zeros[input_size, 1])
+    x_prev = zeros[input_size, 1])
+    x = zeros[input_size, 1])
+
+    predict xt|t-1 with:
+        x = F(x_prev)
+
+    predict yt|t-1
+        y = H(y_prev)
