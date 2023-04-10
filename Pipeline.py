@@ -37,7 +37,7 @@ class Pipeline():
                 predictions = torch.cat([predictions, prediction])
             # print(predictions.size())
             # print(predictions)
-            loss = self.loss_fn(predictions[1:], self.data[:-1])
+            loss = self.loss_fn.forward(predictions[1:], self.data[:-1])
             losses.append(loss.item())
             self.optimizer.zero_grad()
             loss.backward()

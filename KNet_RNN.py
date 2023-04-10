@@ -23,6 +23,8 @@ class KNet_RNN(torch.nn.Module):
 
     def InitSequence(self, x0):
         # initialize with first row
+        print("Initializing sequence")
+        print("x0 = ", x0)
         self.x_post = torch.tensor(x0)
         self.x_post_prev = self.x_post
         self.x_prior_prev = self.x_post
