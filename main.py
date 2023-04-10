@@ -1,5 +1,6 @@
 from KNet_RNN import KNet_RNN
-from auv_690_config import auv_690
+from SystemModel import SysModel
+from auv_690_config import f, h, Q, R, m, n, m1x_0, m2x_0
 from Pipeline import Pipeline
 import pandas as pd
 import numpy as np
@@ -32,12 +33,16 @@ print(avl_log.size(), " is the size of the auv log")
 # print(auv_log[0])
 # print(auv_log)
 
-steps = 15
-lr = 1e-3
-wd = 1e-4
+steps = 10
+lr = 1e-12
+wd = 1e-1
+
+auv_690 = SysModel(f, h, Q, R, m, n)
+auv_690.InitSequence(m1x_0, m2x_0)
 
 knet = KNet_RNN()
 PipelineKNet = Pipeline(auv_690, knet, avl_log)
 PipelineKNet.Initialize()
+
 PipelineKNet.SetTrainingParams(steps, lr, wd)
 PipelineKNet.train()

@@ -1,4 +1,4 @@
-from SystemModel import SysModel
+
 from transformation_function import transformation_function
 from observation_function import observation_function
 import torch
@@ -20,4 +20,9 @@ Q = torch.tensor([3.0000e-04, 3.0000e-04, 3.0000e-03,
                   2.1638e-08, 2.1638e-08, 2.1638e-08])
 R = torch.zeros(Q.size())
 
-auv_690 = SysModel(f, h, Q, R)
+m = 15
+n = 15
+m1x_0 = torch.ones(m, 1) 
+m2x_0 = 0 * 0 * torch.eye(m)
+
+
