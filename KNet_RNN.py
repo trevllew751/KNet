@@ -44,7 +44,7 @@ class KNet_RNN(torch.nn.Module):
 
     def InitRNN(self, priorQ, priorSig, priorS):
 
-        self.num_layers = 1
+        self.num_layers = 2
         i_d_mult = 5 # input dimension multiplier
         o_d_mult = 40 # output dimension multiplier
 
@@ -79,7 +79,7 @@ class KNet_RNN(torch.nn.Module):
         self.d_in_FC2 = self.S_GRU_h_d + self.Sig_GRU_h_d
         self.d_out_FC2 = self.n * self.m
         self.d_hidden_FC2 = self.d_in_FC2 * o_d_mult
-        self.FC2 = nn.Sequential(nn.Linear(self.d_in_FC2, self.d_hidden_FC2), nn.ReLU(), nn.Linear(self.d_hidden_FC2, self.d_out_FC2))
+        self.FC2 = nn.Sequential(nn.Linear(self.d_in_FC2, self.d_hidden_FC2), nn.ReLU(), nn.Linear(self.d_hidden_FC2, self.d_out_FC2), nn.Sigmoid())
 
         # Fully connected 3
         self.d_in_FC3 = self.S_GRU_h_d + self.d_out_FC2
@@ -105,6 +105,33 @@ class KNet_RNN(torch.nn.Module):
         self.d_in_FC7 = 2 * self.n
         self.d_out_FC7 = 2 * self.n * i_d_mult
         self.FC7 = nn.Sequential(nn.Linear(self.d_in_FC7, self.d_out_FC7), nn.ReLU())
+
+        ### Initialize network parameters ###
+        # Apply Xavier initialization to GRU layers
+        # GRU Q
+        for name, param in self.Q_GRU.named_parameters():
+            if 'weight_ih' in name:
+                init.xavier_uniform_(param.data)
+            elif 'weight_hh' in name:
+                init.xavier_uniform_(param.data)
+            elif 'bias' in name:
+                param.data.fill_(0)
+        # GRU Sigma
+        for name, param in self.Sig_GRU.named_parameters():
+            if 'weight_ih' in name:
+                init.xavier_uniform_(param.data)
+            elif 'weight_hh' in name:
+                init.xavier_uniform_(param.data)
+            elif 'bias' in name:
+                param.data.fill_(0)
+        # GRU S
+        for name, param in self.S_GRU.named_parameters():
+            if 'weight_ih' in name:
+                init.xavier_uniform_(param.data)
+            elif 'weight_hh' in name:
+                init.xavier_uniform_(param.data)
+            elif 'bias' in name:
+                param.data.fill_(0)
 
         # Apply He initialization to FC layers
         # FC1
@@ -168,6 +195,42 @@ class KNet_RNN(torch.nn.Module):
         )
         """
 
+    def KG_Step_est(self, y, hidden):
+        # both in size [batch_size, n]
+        #obs_diff = torch.squeeze(y[:15],2) - torch.squeeze(self.y_prev,2) 
+        #obs_innov_diff = torch.squeeze(y[:15],2) - torch.squeeze(self.y,2)
+        # both in size [batch_size, m]
+        #fw_evol_diff = torch.squeeze(self.x_post,2) - torch.squeeze(self.x_post_prev,2)
+        #fw_update_diff = torch.squeeze(self.x_post,2) - torch.squeeze(self.x_prior_prev,2)
+
+        obs_diff = y[:15] - self.y_prev
+        obs_innov_diff = y[:15] - self.m1y
+        
+        fw_evol_diff = self.x_post - self.x_post_prev
+        fw_update_diff = self.x_post - self.x_prior_prev
+
+        #print("obs_diff size: ", obs_diff.size())
+        #print("obs_innov_diff size: ", obs_innov_diff.size())
+        #print("fw_evol_diff size: ", fw_evol_diff.size())
+        #print("fw_update_diff size: ", fw_update_diff.size())
+
+        obs_diff = func.normalize(obs_diff, p=2, dim=0, eps=1e-12, out=None)
+        obs_innov_diff = func.normalize(obs_innov_diff, p=2, dim=0, eps=1e-12, out=None)
+        fw_evol_diff = func.normalize(fw_evol_diff, p=2, dim=0, eps=1e-12, out=None)
+        fw_update_diff = func.normalize(fw_update_diff, p=2, dim=0, eps=1e-12, out=None)
+
+        #print("obs_diff normalized size: ", obs_diff.size())
+        #print("obs_innov_diff normalized size: ", obs_innov_diff.size())
+        #print("fw_evol_diff normalized size: ", fw_evol_diff.size())
+        #print("fw_update_diff normalized size: ", fw_update_diff.size())
+
+        KG = self.KGain_Step(obs_diff, obs_innov_diff, fw_evol_diff, fw_update_diff)
+
+        print("KG size: ", KG.size())
+        self.KG = torch.reshape(KG, (1, self.m, self.n))
+        print("self.KG size: ", self.KG.size())
+
+
     def KNet_Step(self, y, hidden):
         # Calculate priors
         # print(f"x_post {self.x_post}")
@@ -179,22 +242,24 @@ class KNet_RNN(torch.nn.Module):
         # print(w_ib_b)
         # print(f_ib_b)
 
-        #step prior
+        #step prior - 1st moment of x and y
         self.x_prior = torch.tensor(self.f(self.x_post, v, w_ib_b, f_ib_b, self.dt/1000))
         # print(f"x_prior {self.x_prior}")
-        self.y = self.h(self.x_prior)
+        self.m1y = self.h(self.x_prior)
 
         self.dt += 1
 
         #Calculate Kalman Gain
-        self.KGain_Step(y, hidden)
+        #print("The size of hidden is: ", hidden.size())
+        #self.KGain_Step(y, hidden)
+        self.KG_Step_est(y, hidden)
 
         #Innovation
-        dy = (y[:15] - self.y).reshape(1, 15)
-
+        dy = (y[:15] - self.m1y)
         # print(f"KG {self.KG.size()}")
-        # print(f"dy {dy.size()}")
+        print(f"dy {dy.size()}")
 
+        #Calculate 1st posterior moment
         inov = torch.mul(self.KG, dy)
 
         # print(f"inov {inov}")
@@ -210,7 +275,7 @@ class KNet_RNN(torch.nn.Module):
 
         return self.x_post.reshape(1,15), hidden
 
-    def KGain_Step(self, y, hidden):
+    def KGain_Step(self, obs_diff, obs_innov_diff, fw_evol_diff, fw_update_diff):
         
         #print("The size of y[:15] is ", y[:15].size())
         #print("The size of self.y is ", self.y.size())
@@ -218,115 +283,71 @@ class KNet_RNN(torch.nn.Module):
         #print("The size of self.x_post is ", self.x_post.size())
         #print("The size of self.x_post_prev is ", self.x_post_prev.size())
         #print("The size of self.x_prior_prev is ", self.x_prior_prev.size())
-        
-        obs_diff = y[:15] - self.y_prev
-        obs_innov_diff = y[:15] - self.y
-        
-        fw_evol_diff = self.x_post - self.x_post_prev
-        fw_update_diff = self.x_post - self.x_prior_prev
        
-        """
-        # both in size [batch_size, n]
-        obs_diff = torch.squeeze(y[:15],2) - torch.squeeze(self.y_prev,2) 
-        obs_innov_diff = torch.squeeze(y[:15],2) - torch.squeeze(self.y,2)
-        # both in size [batch_size, m]
-        fw_evol_diff = torch.squeeze(self.x_post,2) - torch.squeeze(self.x_post_prev,2)
-        fw_update_diff = torch.squeeze(self.x_post,2) - torch.squeeze(self.x_prior_prev,2)
-
-        obs_diff = func.normalize(obs_diff, p=2, dim=1, eps=1e-12, out=None)
-        obs_innov_diff = func.normalize(obs_innov_diff, p=2, dim=1, eps=1e-12, out=None)
-        fw_evol_diff = func.normalize(fw_evol_diff, p=2, dim=1, eps=1e-12, out=None)
-        fw_update_diff = func.normalize(fw_update_diff, p=2, dim=1, eps=1e-12, out=None)
-        """
-        KG = self.KGain(obs_diff, obs_innov_diff, fw_evol_diff, fw_update_diff)
-        # KG_input = torch.nn.functional.normalize(self.x_post - self.x_prior_prev, p=2, dim=1, eps=1e-12, out=None)
-        # print(f"x_prior_prev {self.x_prior_prev}")
-        #KG_input = torch.nn.functional.normalize(self.x_post - self.x_prior_prev, p=2, dim=0).type(torch.FloatTensor)
-        #if any(torch.isnan(KG)):
-            # print(f"dt {self.dt}")
-            #dy = (y[:15] - self.y).reshape(1, 15)
-            #print(f"KG {KG}")
-            # print(f"KG {self.KG}")
-            # print(f"dy {dy}")
-            # print(f"y {y}")
-            # print(f"x_prior {self.x_prior}")
-            # print(f"self.y {self.y}")
-            # print(f"innov {torch.mul(self.KG, dy)}")
-            # print(f"x_post {self.x_post}")
-            # print(f"x_prior_prev {self.x_prior_prev}")
-            # print(f"x_post - x_prior_prev {self.x_post - self.x_prior_prev}")
-            #raise Exception("NAN in KG")
-        #KG = self.KGain(KG_input)
-
-        self.KG = torch.reshape(KG, (self.m, self.n))
-        #print("self.KG size: ", self.KG.size())
-        
-
-    def KGain(self, obs_diff, obs_innov_diff, fw_evol_diff, fw_update_diff):
         def expand_dim(x):
-            expanded = torch.empty(1, 1, x.shape[-1])
+            expanded = torch.empty(self.num_layers, 1, x.shape[-1])
             expanded[0, :, :] = x
             return expanded
         
-
+        #torch.Size([layers, 1, m=15])
         obs_diff = expand_dim(obs_diff)
         obs_innov_diff = expand_dim(obs_innov_diff)
         fw_evol_diff = expand_dim(fw_evol_diff)
         fw_update_diff = expand_dim(fw_update_diff)
 
-        #print("obs_diff size: ", obs_diff.size())
-        #print("obs_innov_diff size: ", obs_innov_diff.size())
-        #print("fw_evol_diff size: ", fw_evol_diff.size())
-       # print("fw_update_diff size: ", fw_update_diff.size())
+        print("obs_diff expanded size: ", obs_diff.size())
+        print("obs_innov_diff expanded size: ", obs_innov_diff.size())
+        print("fw_evol_diff expanded size: ", fw_evol_diff.size())
+        print("fw_update_diff expanded size: ", fw_update_diff.size())
 
         ####################
         ### Forward Flow ###
         ####################
         
-        # FC 5
-        in_FC5 = fw_evol_diff
-        out_FC5 = self.FC5(in_FC5)
-        #print("out_FC5 size: ", out_FC5.size())
+        # FC 5 = forward evolution difference
+        in_FC5 = fw_evol_diff.float()
+        out_FC5 = self.FC5(in_FC5)  #torch.Size([layers, 1, m*in_mult = 75])
+        print("out_FC5 size: ", out_FC5.size())
 
         # Q-GRU
         in_Q = out_FC5
-        out_Q, self.h_Q = self.Q_GRU(in_Q, self.h_Q)
-        #print("out_Q size: ", out_Q.size())
-        #print("self.h_Q size: ", self.h_Q.size())
+        out_Q, self.h_Q = self.Q_GRU(in_Q, self.h_Q)  #torch.Size([layers, 1, m^2 = 225])
+        print("out_Q size: ", out_Q.size())
+        print("self.h_Q size: ", self.h_Q.size())
 
         # FC 6
         in_FC6 = fw_update_diff
-        out_FC6 = self.FC6(in_FC6)
-        #print("out_FC6 size: ", out_FC6.size())
+        out_FC6 = self.FC6(in_FC6)  #torch.Size([layers, 1, m*in_mult = 75])
+        print("out_FC6 size: ", out_FC6.size())
 
         # Sigma_GRU
         in_Sigma = torch.cat((out_Q, out_FC6), 2)
-        #print("in_Sigma size: ", in_Sigma.size())
-        out_Sigma, self.h_Sigma = self.Sig_GRU(in_Sigma, self.h_Sigma)
-        #print("out_Sigma size: ", out_Sigma.size())
-        #print("self.h_Sigma size: ", self.h_Sigma.size())
+        print("in_Sigma size: ", in_Sigma.size())
+        out_Sigma, self.h_Sigma = self.Sig_GRU(in_Sigma, self.h_Sigma) #torch.Size([layers, 1, m^2 = 225])
+        print("out_Sigma size: ", out_Sigma.size())
+        print("self.h_Sigma size: ", self.h_Sigma.size())
 
         # FC 1
         in_FC1 = out_Sigma
-        out_FC1 = self.FC1(in_FC1)
-        #print("out_FC1 size: ", out_FC1.size())
+        out_FC1 = self.FC1(in_FC1)  #torch.Size([layers, 1, n^2 = 225])
+        print("out_FC1 size: ", out_FC1.size())
 
         # FC 7
         in_FC7 = torch.cat((obs_diff, obs_innov_diff), 2)
-        out_FC7 = self.FC7(in_FC7)
-        #print("out_FC7 size: ", out_FC7.size())
+        out_FC7 = self.FC7(in_FC7)  #torch.Size([layers, 1, n*2*in_mult = 150])
+        print("out_FC7 size: ", out_FC7.size())
 
 
         # S-GRU
         in_S = torch.cat((out_FC1, out_FC7), 2)
-        out_S, self.h_S = self.S_GRU(in_S, self.h_S)
-        #print("out_S size: ", out_S.size())
+        out_S, self.h_S = self.S_GRU(in_S, self.h_S)  #torch.Size([layers, 1, n^2 = 225])
+        print("out_S size: ", out_S.size())
 
 
         # FC 2
         in_FC2 = torch.cat((out_Sigma, out_S), 2)
-        out_FC2 = self.FC2(in_FC2)
-        #print("out_FC2 size: ", out_FC2.size())
+        out_FC2 = self.FC2(in_FC2) #torch.Size([layers, 1, m*n = 225])
+        print("out_FC2 size: ", out_FC2.size())
 
         #####################
         ### Backward Flow ###
@@ -343,8 +364,45 @@ class KNet_RNN(torch.nn.Module):
         # updating hidden state of the Sigma-GRU
         self.h_Sigma = out_FC4
 
-        return out_FC2 # m*n KG output
-    
+        #combine output nodes
+        #combine_nodes = nn.AdaptiveAvgPool3d((1, self.m, self.n))
+        #KG = torch.sigmoid(out_FC2)
+        #print("K_GainStep KG size: ", KG.size())
+        print("Output layer size: ", out_FC2.size())
+
+        y1 = torch.reshape(out_FC4[0], (1, self.m, self.n))
+        y2 = torch.reshape(out_FC4[1], (1, self.m, self.n))
+        print("Output y1 size: ", y1.size())
+        print("Output y2 size: ", y2.size())
+
+        return y1, y2# (hidden layers * m * n) KG output
+
+
+        
+        # KG_input = torch.nn.functional.normalize(self.x_post - self.x_prior_prev, p=2, dim=1, eps=1e-12, out=None)
+        # print(f"x_prior_prev {self.x_prior_prev}")
+        #KG_input = torch.nn.functional.normalize(self.x_post - self.x_prior_prev, p=2, dim=0).type(torch.FloatTensor)
+        if (torch.isnan(KG).any()):
+            # print(f"dt {self.dt}")
+            #dy = (y[:15] - self.y).reshape(1, 15)
+            print(f"KG {KG}")
+            #print(f"KG {self.KG}")
+            # print(f"dy {dy}")
+            print(f"y {y}")
+            # print(f"x_prior {self.x_prior}")
+            print(f"self.y {self.y}")
+            # print(f"innov {torch.mul(self.KG, dy)}")
+            # print(f"x_post {self.x_post}")
+            # print(f"x_prior_prev {self.x_prior_prev}")
+            # print(f"x_post - x_prior_prev {self.x_post - self.x_prior_prev}")
+            raise Exception("NAN in KG")
+        #KG = self.KGain(KG_input)
+
+        
+        
+
+    def KGain(self, obs_diff, obs_innov_diff, fw_evol_diff, fw_update_diff):
+             
         """
         input_out = self.fc_state_in(KG_input)
         input_out = input_out.unsqueeze(0)
@@ -362,12 +420,18 @@ class KNet_RNN(torch.nn.Module):
     #########################
     def init_hidden_KNet(self):
         weight = next(self.parameters()).data
-        hidden = weight.new(1, 1, self.S_GRU_h_d).zero_()
+        hidden = weight.new(self.num_layers, 1, self.S_GRU_h_d).zero_()
+        #print("The size of h_S is: ", hidden.size())
         self.h_S = hidden.data
-        self.h_S = self.prior_S.flatten().reshape(1, 1, -1).repeat(1,1, 1) # batch size expansion
-        hidden = weight.new(1, 1, self.Sig_GRU_h_d).zero_()
+        self.h_S = self.prior_S.flatten().reshape(1, 1, -1).repeat(self.num_layers,1, 1) # batch size expansion
+        #print("The size of self.h_S is: ", self.h_S.size())
+        hidden = weight.new(self.num_layers, 1, self.Sig_GRU_h_d).zero_()
+        #print("The size of h_Sigma is: ", hidden.size())
         self.h_Sigma = hidden.data
-        self.h_Sigma = self.prior_Sigma.flatten().reshape(1,1, -1).repeat(1,1, 1) # batch size expansion
-        hidden = weight.new(1, 1, self.Q_GRU_h_d).zero_()
+        self.h_Sigma = self.prior_Sigma.flatten().reshape(1,1, -1).repeat(self.num_layers,1, 1) # batch size expansion
+        #print("The size of self.h_Sigma is: ", self.h_Sigma.size())
+        hidden = weight.new(self.num_layers, 1, self.Q_GRU_h_d).zero_()
+        #print("The size of h_Q is: ", hidden.size())
         self.h_Q = hidden.data
-        self.h_Q = self.prior_Q.flatten().reshape(1,1, -1).repeat(1,1, 1) # batch size expansion
+        self.h_Q = self.prior_Q.flatten().reshape(1,1, -1).repeat(self.num_layers,1, 1) # batch size expansion
+        #print("The size of self.h_Q is: ", self.h_Q.size())

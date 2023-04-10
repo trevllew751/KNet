@@ -25,7 +25,8 @@ class Pipeline():
 
     def train(self):
         #feature_size = self.RNN.feature_size
-        hidden = None
+        hidden = torch.empty((self.RNN.num_layers, 1, self.RNN.S_GRU_h_d))
+        print("Size of hidden is: ", hidden.size())
         self.RNN.train()
         self.RNN.init_hidden_KNet()
 
@@ -45,15 +46,19 @@ class Pipeline():
                 print(f"row {i} out of {N_B}")
                 row = self.data[i]
                 #print(f"row size: {row.size()}")
-                #print("Prediction size: ",predictions.size())
+                #print("Prediction size: ",prediction.size())
                 #print("Predictions: ",predictions)
-                prediction, hidden = self.RNN(row, hidden)
-                prediction.reshape(1, self.SysModel.m)
+                #print("Size of hidden is: ", hidden.size())
+                prediction1, prediction2 = self.RNN(row, hidden)
+                prediction1.reshape(1, self.SysModel.m)
+                prediction2.reshape(1, self.SysModel.m)
                 #hidden = hidden.data
                 
                 # print(predictions.size())
-                predictions = torch.cat([predictions, prediction])
-                loss = self.loss_fn(prediction, row[:15])
+                predictions = torch.cat([predictions, prediction1, prediction2])
+                loss1 = self.loss_fn(prediction1, row[:15])
+                loss2 = self.loss_fn(prediction2, row[:15])
+                loss = loss1 + loss2
                 print(f"Loss: {loss.item()}")
                 MSE_training_loss_batch[i] = loss.item()
                 Batch_Optimizing_LOSS_sum = Batch_Optimizing_LOSS_sum + loss
