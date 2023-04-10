@@ -24,15 +24,15 @@ avl_log = torch.tensor(avl_log).double()
 # print(avl_log)
 # print(avl_log[0])
 
-print(auv_log)
-print(auv_log.size(), " is the size of the auv log")
+#print(avl_log)
+print(avl_log.size(), " is the size of the auv log")
 # auv_log = torch.randn(200, 15)
 
 # print(auv_log.size(0))
 # print(auv_log[0])
 # print(auv_log)
 
-steps = 10
+steps = 15
 lr = 1e-3
 wd = 1e-4
 

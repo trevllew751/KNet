@@ -17,6 +17,11 @@ class Pipeline():
         self.weight_decay = weight_decay
         self.loss_fn = torch.nn.MSELoss(reduction='mean')
         self.optimizer = torch.optim.Adam(self.RNN.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        """
+        for name, param in self.RNN.named_parameters():
+         if param.requires_grad:
+            print(name)
+        """
 
     def train(self):
         feature_size = self.RNN.feature_size
@@ -38,18 +43,14 @@ class Pipeline():
                 predictions = torch.cat([predictions, prediction])
             # print(predictions.size())
             # print(predictions)
-<<<<<<< HEAD
-            loss = self.loss_fn.forward(predictions[1:], self.data[:-1])
-=======
             loss = self.loss_fn(predictions[1:], self.data[:-1][:, :feature_size])
             loss = 10 * torch.log10(loss)
->>>>>>> master
             losses.append(loss.item())
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
-            print(f"Loss: {loss}")
+            print(f"Test {e} Loss: {loss}")
         print(f"KGain: {self.RNN.KG}")
         epochs = list(range(0, self.n_steps))
         plt.plot(epochs, losses, "r.")

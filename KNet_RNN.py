@@ -19,17 +19,10 @@ class KNet_RNN(torch.nn.Module):
         self.InitRNN()
 
     def InitSequence(self, x0):
-<<<<<<< HEAD
-        # initialize with first row
-        print("Initializing sequence")
-        print("x0 = ", x0)
-        self.x_post = torch.tensor(x0)
-=======
         # initialize with first row'
         # print(x0[:15].size())
         # print(x0[:15])
         self.x_post = torch.tensor(x0[:15])
->>>>>>> master
         self.x_post_prev = self.x_post
         self.x_prior_prev = self.x_post
         self.y_prev = self.h(self.x_post)
@@ -152,7 +145,7 @@ class KNet_RNN(torch.nn.Module):
         KG_input = torch.nn.functional.normalize(self.x_post - self.x_prior_prev, p=2, dim=0).type(torch.FloatTensor)
         if any(torch.isnan(KG_input)):
             # print(f"dt {self.dt}")
-            dy = (y - self.y).reshape(1, 15)
+            dy = (y[:15] - self.y).reshape(1, 15)
             print(f"KG_input {KG_input}")
             # print(f"KG {self.KG}")
             # print(f"dy {dy}")
