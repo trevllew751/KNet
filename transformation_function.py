@@ -7,9 +7,9 @@ def transformation_function(x, v, w_ib_b, f_ib_b, dt):
     # x = x.astype(np.float32)
     # TODO: temporary
     x = x.detach().numpy()
-    v = v.numpy()[0]
-    w_ib_b = w_ib_b.numpy()[0]
-    f_ib_b = f_ib_b.numpy()[0]
+    v = v.numpy()#[0]
+    w_ib_b = w_ib_b.numpy()#[0]
+    f_ib_b = f_ib_b.numpy()#[0]
 
     # print(x)
     # print(v)

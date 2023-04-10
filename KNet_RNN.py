@@ -8,9 +8,6 @@ class KNet_RNN(torch.nn.Module):
         super(KNet_RNN, self).__init__()
         # TODO: change these bruh and also dt
         self.dt = 0
-        self.v = torch.zeros(1, 6)
-        self.w_ib_b = torch.randn(1, 3)
-        self.f_ib_b = torch.randn(1, 3)
         # self.input_dim = input_dim
         # self.hidden_dim = hidden_dim
         # self.num_layers = num_layers
@@ -22,8 +19,10 @@ class KNet_RNN(torch.nn.Module):
         self.InitRNN()
 
     def InitSequence(self, x0):
-        # initialize with first row
-        self.x_post = torch.tensor(x0)
+        # initialize with first row'
+        # print(x0[:15].size())
+        # print(x0[:15])
+        self.x_post = torch.tensor(x0[:15])
         self.x_post_prev = self.x_post
         self.x_prior_prev = self.x_post
         self.y_prev = self.h(self.x_post)
@@ -43,7 +42,8 @@ class KNet_RNN(torch.nn.Module):
         # print(f"R {self.R}")
 
     def InitRNN(self):
-        input_size = self.x_post.size(0)
+        self.feature_size = self.x_post.size(0)
+        input_size = self.feature_size
         output_size = input_size
         hidden_size = input_size ** 2
         num_layers = 3
@@ -52,7 +52,7 @@ class KNet_RNN(torch.nn.Module):
         dropout = 0
         bidirectional = False
 
-        self.hidden = torch.randn((2 if bidirectional else 1) * num_layers, hidden_size)
+        self.hidden = torch.zeros((2 if bidirectional else 1) * num_layers, hidden_size)
 
         self.RNN_State = nn.GRU(
             input_size=input_size,
@@ -92,7 +92,14 @@ class KNet_RNN(torch.nn.Module):
     def KNet_Step(self, y, hidden):
         # Calculate priors
         # print(f"x_post {self.x_post}")
-        self.x_prior = torch.tensor(self.f(self.x_post, self.v, self.w_ib_b, self.f_ib_b, self.dt/1000))
+        # self.x_prior = torch.tensor(self.f(self.x_post, self.v, self.w_ib_b, self.f_ib_b, self.dt/1000))
+        v = y[15: 21]
+        w_ib_b = y[21: 24]
+        f_ib_b = y[24:]
+        # print(v)
+        # print(w_ib_b)
+        # print(f_ib_b)
+        self.x_prior = torch.tensor(self.f(self.x_post, v, w_ib_b, f_ib_b, self.dt/1000))
         # print(f"x_prior {self.x_prior}")
         self.y = self.h(self.x_prior)
 
@@ -100,7 +107,7 @@ class KNet_RNN(torch.nn.Module):
 
         self.KGain_Step(y, hidden)
 
-        dy = (y - self.y).reshape(1, 15)
+        dy = (y[:15] - self.y).reshape(1, 15)
 
         # print(f"KG {self.KG.size()}")
         # print(f"dy {dy.size()}")
@@ -135,7 +142,7 @@ class KNet_RNN(torch.nn.Module):
         # KG = self.KGain(obs_diff, obs_innov_diff, fw_evolv_diff, fw_update_diff)
         # KG_input = torch.nn.functional.normalize(self.x_post - self.x_prior_prev, p=2, dim=1, eps=1e-12, out=None)
         # print(f"x_prior_prev {self.x_prior_prev}")
-        KG_input = torch.nn.functional.normalize(self.x_post - self.x_prior_prev, p=2, dim=0)
+        KG_input = torch.nn.functional.normalize(self.x_post - self.x_prior_prev, p=2, dim=0).type(torch.FloatTensor)
         if any(torch.isnan(KG_input)):
             # print(f"dt {self.dt}")
             dy = (y - self.y).reshape(1, 15)
