@@ -5,6 +5,7 @@ from Pipeline import Pipeline
 import pandas as pd
 import numpy as np
 import torch
+from torch.utils.data import Dataset, DataLoader
 
 # fill with auv_log data
 # avl_log = torch.zeros(1, 15)
@@ -26,21 +27,21 @@ avl_log = torch.tensor(avl_log).double()
 # print(avl_log[0])
 
 #print(avl_log)
-print(avl_log.size(), " is the size of the auv log")
+#print(avl_log.size(), " is the size of the auv log")
 # auv_log = torch.randn(200, 15)
 
 # print(auv_log.size(0))
-# print(auv_log[0])
+print(avl_log[0])
 # print(auv_log)
 
 steps = 10
-lr = 1e-12
-wd = 1e-1
+lr = 2e-8
+wd = 10
 
 auv_690 = SysModel(f, h, Q, R, m, n)
 auv_690.InitSequence(m1x_0, m2x_0)
 
-knet = KNet_RNN()
+knet = KNet_RNN(m, n)
 PipelineKNet = Pipeline(auv_690, knet, avl_log)
 PipelineKNet.Initialize()
 
